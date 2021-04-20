@@ -1,0 +1,13 @@
+Genotype,lower,ratio,upper,Pesticide
+Tubules,1.16,1.21,1.262,Bendiocarb
+All Tissues,2.333,2.466,2.607,Bendiocarb
+Fat Body,1.068,1.142,1.222,Bendiocarb
+Tubules,0.73,0.861,1.016,Imidacloprid
+All Tissues,1.827,2.275,2.834,Imidacloprid
+Fat Body,0.53,0.855,1.377,Imidacloprid
+Tubules,0.898,0.951,1.007,Malathion
+All Tissues,2.24,2.387,2.544,Malathion
+Fat Body,1.099,1.182,1.271,Malathion
+Midgut,1.378,1.974,2.826,Imidacloprid
+Midgut,1.904,2.056,2.22,Malathion
+Midgut,2.187,2.455,2.756,Bendiocarb

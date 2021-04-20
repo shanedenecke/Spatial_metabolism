@@ -1,0 +1,269 @@
+---
+title: "Spatial_Metabolism"
+author: "Shane Denecke"
+date: "4/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/home/shanedenecke/Dropbox/Transporter_PK/Cyp6g1_tissues/Publication_data')
+```
+
+## R Markdown
+
+This analysis accompanies the publication Luong et. al (in prep). It focuses on the use of the GAL4-UAS system to consider which tissues are the most important in pesticide metabolism.
+
+```{r import libraries}
+shhh <- suppressPackageStartupMessages
+shhh(library(tidyverse))
+shhh(library(data.table))
+shhh(library(gridExtra))
+shhh(library(ggsignif))
+shhh(library(ggsci))
+dir.create('plots',showWarnings = F)
+```
+
+$$\\[1in]$$
+
+## Luciferase Assays to Measure GAL4 Strength
+
+
+
+
+```{r Lucy-GAL4, warning = FALSE, fig.width=5, fig.height=10}
+
+raw.luc=fread('./raw_data/GAL4_Luciferase_Table.csv') %>% 
+  filter(Repeat==1)
+raw.luc[['Normalized million RLU']]=raw.luc[['Normalized RLU']]/1000000
+raw.luc$Set=factor(raw.luc$Set,levels=c('Midgut','Tubules','Fat Body'))
+
+
+gp=ggplot(raw.luc ,aes(x=Cyp6g1,y=`Normalized million RLU`,fill=Cyp6g1))
+gp=gp+facet_grid(rows=vars(Set),scales = 'free_y')
+gp=gp+lims(y=c(0,25))
+gp=gp+stat_summary(fun=mean,position=position_dodge(width=0.95),geom="bar")
+gp=gp+geom_dotplot(binaxis = "y",stackdir = "center", colour = "black",fill='black',position = position_dodge(width = 0.5), dotsize = 1.5,binwidth = 1)
+gp=gp+geom_signif(comparisons=list(c('Hikone-R','Tissue Specific')),test='t.test',y_position=20,tip_length=.2)
+gp=gp+labs(x='Genotype',y='Millions RLUs / microgram Protein')
+gp=gp+stat_summary(geom="errorbar",colour='black',fun='mean_se',width=.4,size=1)
+gp=gp+scale_fill_manual(values=c('grey50','red'))
+gp=gp+theme_bw()
+gp=gp+theme(legend.title=element_text(size=24,face='bold'),
+            legend.text=element_text(size=20,face='bold'),
+            axis.text.y=element_text(size=20),
+            axis.text.x=element_text(size=20,hjust=1,angle=30),
+            axis.title=element_text(size=24),
+            panel.grid = element_blank(),
+            legend.position='none',
+            strip.text = element_text(size=24,hjust = 0.5),
+            plot.title = element_text(size=36,hjust = 0.5))
+ggsave(plot=gp,device='pdf',filename='./plots/Luciferase_GAL4_plot.pdf',width=5,height=10)
+print(gp)
+
+```
+
+$$\\[1in]$$
+
+## Feeding Assays to measure toxicity
+
+
+
+
+```{r Lc50 data, warning = FALSE, fig.width=12, fig.height=6,message=F}
+
+
+raw.rr=fread('./raw_data/Lc50_RR_table.csv')
+raw.rr$Genotype=factor(raw.rr$Genotype,levels=c('Midgut','Tubules','Fat Body','All Tissues'))
+raw.rr=arrange(raw.rr,Genotype) %>% mutate(lab=c(rep('A',3),rep('B',3),rep('C',3),rep('D',3)))
+
+
+gp=ggplot(raw.rr,aes(x=Pesticide,y=ratio,fill=Pesticide))
+gp=gp+facet_grid(cols=vars(Genotype))
+gp=gp+geom_bar(stat='identity')
+gp=gp+geom_errorbar(aes(ymin=lower,ymax=upper))
+gp=gp+scale_fill_aaas()
+gp=gp+lims(y=c(0,3.5))
+gp=gp+labs(y='Resistance Ratio\n',x='\nPesticide')
+gp=gp+geom_hline(yintercept = 1,linetype=2)
+gp=gp+geom_text(x=.7,y=3.4,size=12,aes(label=lab))
+gp=gp+theme_bw()
+gp=gp+theme(legend.title=element_text(size=24,face='bold'),
+            legend.text=element_text(size=20,face='bold'),
+            axis.text.y=element_text(size=20),
+            axis.text.x=element_text(size=14,hjust=1,angle=30),
+            axis.title=element_text(size=24),
+            #panel.grid = element_blank(),
+            legend.position='none',
+            strip.text = element_text(size=24,hjust = 0.5,face='bold'),
+            plot.title = element_text(size=36,hjust = 0.5))
+ggsave(plot=gp,filename='./plots/Lc50_RR.pdf',device='pdf',width=12,height=6)
+print(gp)
+
+
+
+```
+
+$$\\[1in]$$
+
+## Real-time toxicology assays with the "Wiggle Index"
+
+
+```{r Wiggle Analysis, warning=FALSE,message=FALSE,error=FALSE, results='hide',fig.keep='all', fig.width=12, fig.height=6}
+
+
+
+################### Raw combined #########################
+
+raw.wiggle=fread('./raw_data/Combined_Wiggle_Data.csv')
+times=c('0min','5min','10min','15min','30min','45min','60min','90min','120min')
+raw.wiggle$Time=factor(raw.wiggle$Time,levels=times)
+raw.wiggle$Set=gsub('(^.+) >.+$','\\1',raw.wiggle$Genotype)
+raw.wiggle$Expression=gsub('^.+> (.+$)','\\1',raw.wiggle$Genotype)
+raw.wiggle$individual=paste0(raw.wiggle$Rep,raw.wiggle$Location)
+
+flat=spread(raw.wiggle,key=Time,value=Wiggle_Index)
+for(t in times){
+  flat[[paste0(t,'__RMR')]]=flat[[t]]/flat[['0min']]
+}
+rmr.wiggle=select(flat,Date:individual,contains('RMR'))
+rmr.melt=melt(rmr.wiggle,
+         id.vars=c('Date','Genotype','Pesticide','Dose','Rep','Location','Set','individual','Expression'),
+         variable.name = 'Time',value.name = 'RMR') %>% 
+  mutate(Time=gsub('__RMR','',Time)) %>%
+  mutate(Time=factor(Time,levels=times))
+           
+
+
+################## Outliers
+ind=select(rmr.melt,Genotype,Pesticide,Dose,Time) %>% unique.data.frame
+
+out.list=list()
+for(i in 1:nrow(ind)){
+  sub=rmr.melt %>% filter(Genotype==ind[i]$Genotype) %>% filter(Pesticide==ind[i]$Pesticide) %>% filter(Dose==ind[i]$Dose) %>% filter(Time==ind[i]$Time)
+  
+  outs=boxplot.stats(sub$RMR)$out
+  if(length(outs)>0){
+    out.list[[paste(ind[i]$Genotype,ind[i]$Pesticide,ind[i]$Dose,ind[i]$Time)]]=sub %>% filter(RMR==outs)
+    }
+}
+
+out.table=rbindlist(out.list) %>% group_by(Date,Genotype,Pesticide,Dose,individual) %>% summarize(coun=n()) %>% 
+  arrange(desc(coun)) %>% filter(coun>=3) %>% select(-coun)
+  
+
+outliers.final=merge(out.table,rmr.melt,by=colnames(out.table),all.x=T)
+
+rmr.clean=anti_join(rmr.melt,outliers.final)
+
+
+
+se=function(x) sd(x)/sqrt(length(x))
+rmr.sum=rmr.clean %>% 
+  group_by(Date,Genotype,Pesticide,Dose,Time,Expression,Set) %>% 
+  summarize(RMR_mean=mean(RMR),RMR_stderr=se(RMR)) %>% data.table()
+
+
+
+
+
+plot.rmr.sub=rmr.sum %>% filter(
+  (Set=='TB' & Dose=='40ppm' & Pesticide=='Bendiocarb') |
+  (Set=='TB' & Pesticide=='Imidacloprid' & Date=='06Mar21') |
+  (Set=='MG' & Dose=='40ppm' & Pesticide=='Bendiocarb') |
+  (Set=='MG' & Dose=='40ppm' & Pesticide=='Imidacloprid') |
+  (Set=='FB' & Dose=='40ppm' & Pesticide=='Bendiocarb') |
+  (Set=='FB' & Dose=='40ppm' & Pesticide=='Imidacloprid') | 
+  (Set=='HR' & Pesticide!='Malathion')
+)
+
+
+
+plot.rmr.sub$Set=gsub('TB','Tubules',plot.rmr.sub$Set)
+plot.rmr.sub$Set=gsub('HR','All Tissues',plot.rmr.sub$Set)
+plot.rmr.sub$Set=gsub('MG','Midgut',plot.rmr.sub$Set)
+plot.rmr.sub$Set=gsub('FB','Fat Body',plot.rmr.sub$Set)
+plot.rmr.sub$Set=factor(plot.rmr.sub$Set,levels=c('Midgut','Tubules','Fat Body','All Tissues'))
+plot.rmr.sub$Expression=factor(plot.rmr.sub$Expression,levels=c('NULL','Cyp6g1'))
+plot.rmr.sub$Time=as.numeric(gsub('min','',plot.rmr.sub$Time))
+                    
+v=c()
+for(i in 1:nrow(plot.rmr.sub)){
+  sub=plot.rmr.sub[i]
+  if(sub$Pesticide=="Bendiocarb" & sub$Set=="Midgut"){v[i]="A"}
+  if(sub$Pesticide=="Bendiocarb" & sub$Set=="Tubules"){v[i]="B"}
+  if(sub$Pesticide=="Bendiocarb" & sub$Set=="Fat Body"){v[i]="C"}
+  if(sub$Pesticide=="Bendiocarb" & sub$Set=="All Tissues"){v[i]="D"}
+  if(sub$Pesticide=="Imidacloprid" & sub$Set=="Midgut"){v[i]="E"}
+  if(sub$Pesticide=="Imidacloprid" & sub$Set=="Tubules"){v[i]="F"}
+  if(sub$Pesticide=="Imidacloprid" & sub$Set=="Fat Body"){v[i]="G"}
+  if(sub$Pesticide=="Imidacloprid" & sub$Set=="All Tissues"){v[i]="H"}
+}
+  
+plot.rmr.sub$lab=v
+
+
+
+gp=ggplot(data=plot.rmr.sub,aes(x=Time,y=RMR_mean,color=Expression))
+gp=gp+facet_grid(rows=vars(Pesticide),cols=vars(Set))
+gp=gp+scale_y_continuous(breaks=c(0,.25,.5,.75,1,1.25))
+gp=gp+scale_color_manual(values=c('black','red'))
+gp=gp+labs(x='\nTime (Minutes)',y='Relative Movement Ratio\n')
+gp=gp+geom_line(size=1.2)
+gp=gp+geom_point(size=4)
+gp=gp+geom_errorbar(aes(ymin=RMR_mean-RMR_stderr,ymax=RMR_mean+RMR_stderr))
+gp=gp+geom_text(x=1,y=1.5,size=12,aes(label=lab))
+gp=gp+theme_bw()
+gp=gp+theme(strip.text = element_text(size=24,face='bold'),legend.title = element_text(size=24,face='bold'),
+            legend.text = element_text(size=18),
+            axis.title = element_text(size=24,face='bold'),
+            axis.text=element_text(size=14))
+
+
+ggsave(filename='./plots/Wiggle_Graph.pdf',plot=gp,device='pdf',width=15,height=10)
+print(gp)
+
+
+
+
+
+```
+$$\\[1in]$$
+
+## Figure S2 Showing the lack of effect of Cyp6g1 on Malathion movement
+
+
+
+```{r}
+
+
+mal.sum=rmr.sum %>% filter(Pesticide=='Malathion' & Set=='HR')
+mal.sum$Set=gsub('TB','Tubules',mal.sum$Set)
+mal.sum$Set=gsub('HR','All Tissues',mal.sum$Set)
+mal.sum$Set=gsub('MG','Midgut',mal.sum$Set)
+mal.sum$Set=gsub('FB','Fat Body',mal.sum$Set)
+mal.sum$Set=factor(mal.sum$Set,levels=c('Midgut','Tubules','Fat Body','All Tissues'))
+mal.sum$Expression=factor(mal.sum$Expression,levels=c('NULL','Cyp6g1'))
+mal.sum$Time=as.numeric(gsub('min','',mal.sum$Time))
+
+
+
+gp=ggplot(data=mal.sum,aes(x=Time,y=RMR_mean,color=Expression))
+gp=gp+facet_grid(rows=vars(Pesticide),cols=vars(Set))
+gp=gp+scale_y_continuous(breaks=c(0,.25,.5,.75,1,1.25))
+gp=gp+scale_color_manual(values=c('black','red'))
+gp=gp+labs(x='Time',y='Relative Movement Ratio')
+gp=gp+geom_line(size=1.2)
+gp=gp+geom_point(size=4)
+gp=gp+geom_errorbar(aes(ymin=RMR_mean-RMR_stderr,ymax=RMR_mean+RMR_stderr))
+gp=gp+theme_bw()
+gp=gp+theme(strip.text = element_text(size=24,face='bold'),legend.title = element_text(size=24,face='bold'),
+            legend.text = element_text(size=18),
+            axis.title = element_text(size=18,face='bold'),
+            axis.text=element_text(size=14))
+ggsave(filename='./plots/Wiggle_Malathion.pdf',plot=gp,device='pdf',width=8,height=5)
+print(gp)
+
+
+```
+
